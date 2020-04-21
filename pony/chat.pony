@@ -1,3 +1,4 @@
+use "assert"
 use "cli"
 use "collections"
 use "time"
@@ -59,11 +60,13 @@ class val BehaviorFactory
 
 actor Chat
   let _members: ClientSeq
+  let _out: OutStream
   var _buffer: Array[(Array[U8] val | None)]
 
-  new create(initiator: Client) =>
+  new create(out: OutStream, initiator: Client) =>
     _members = ClientSeq
     _buffer =  Array[(Array[U8] val | None)]
+    _out = out
 
     _members.push(initiator)
 
@@ -89,6 +92,7 @@ actor Chat
 
   be join(client: Client, accumulator: Accumulator) =>
     _members.push(client)
+    _out.print("Chat.join #members: " + _members.size().string())
 
     ifdef not "_BENCH_NO_BUFFERED_CHATS" then
       if _buffer.size() > 0 then
@@ -118,19 +122,24 @@ actor Client
   let _directory: Directory
   let _dice: DiceRoll
   let _rand: SimpleRand
+  let _out: OutStream
 
-  new create(id: U64, directory: Directory, seed: U64) =>
+  new create(out: OutStream, id: U64, directory: Directory, seed: U64) =>
     _id = id
     _friends = ClientSeq
     _chats = ChatSeq
     _directory = directory
     _rand = SimpleRand(seed)
     _dice = DiceRoll(_rand)
+    _out = out
+    _out.print("Client.created: id="+id.string() + " seed: " + seed.string())
 
   be befriend(client: Client) =>
     _friends.push(client)
+    _out.print("Client.befrient: " + _id.string() + " #friends: " + _friends.size().string())
 
   be logout() =>
+    _out.print("Client.logout: " + _id.string() + " #friends: " + _friends.size().string())
     for chat in _chats.values() do
       chat.leave(this, true, None)
     else
@@ -138,6 +147,7 @@ actor Client
     end
 
   be left(chat: Chat, did_logout: Bool, accumulator: (Accumulator | None)) =>
+    _out.print("Client.left: " + _id.string() + " didLogout: " + did_logout.string() + " #friends: " + _friends.size().string())
     for (i, c) in _chats.pairs() do
       if c is chat then
         _chats.remove(i, 1) ; break
@@ -154,21 +164,33 @@ actor Client
 
   be accepted(chat: Chat, accumulator: Accumulator) =>
     _chats.push(chat)
+    _out.print("Client.invite: " + _id.string() + " #chats: " + _chats.size().string())
     accumulator.stop(Ignore)
 
   be forward(chat: Chat, payload: (Array[U8] val | None), accumulator: Accumulator) =>
+    _out.print("Client.forward: " + _id.string())
     accumulator.stop(PostDelivery)
 
   be act(behavior: BehaviorFactory, accumulator: Accumulator) =>
     let index = _rand.nextInt(_chats.size().u32()).usize()
+    let action = behavior(_dice)
+    let actionName =
+              match action
+              | Post    => "Post"
+              | Leave   => "Leave"
+              | Invite  => "Invite"
+              | Compute => "Compute"
+              | None    => "None"
+              end
+    _out.print("Client.act: " + _id.string() + " #chats: " + _chats.size().string() + " action: " + actionName.string())
 
     try
-      match behavior(_dice)
+      match action
       | Post => _chats(index)?.post(None, accumulator)
       | Leave => _chats(index)?.leave(this, false, accumulator)
       | Compute => Fibonacci(35) ; accumulator.stop(Compute)
       | Invite =>
-        let created = Chat(this)
+        let created = Chat(_out, this)
 
         _chats.push(created)
 
@@ -182,16 +204,18 @@ actor Client
         if invitations == 0 then
           invitations = 1
         end
-        
+
         accumulator.bump(Invite, invitations)
-  
+
         for k in Range[USize](0, invitations) do
           try created.join(f(k)?, accumulator) end
         end
       else
+        _out.print("Client.act: " + _id.string() + " stop: none 1")
         accumulator.stop(None)
       end
     else
+      _out.print("Client.act: " + _id.string() + " stop: none 2")
       accumulator.stop(None)
     end
 
@@ -200,15 +224,19 @@ actor Directory
   let _random: SimpleRand
   let _befriend: U32
   var _poker: (Poker | None)
+  let _out: OutStream
 
-  new create(seed: U64, befriend': U32) =>
+  new create(out: OutStream, seed: U64, befriend': U32) =>
     _clients = ClientSeq
+    out.print("Directory.create: " + seed.string())
     _random = SimpleRand(seed)
     _befriend = befriend'
     _poker = None
+    _out = out
 
   be login(id: U64) =>
-    _clients.push(Client(id, this, _random.next()))
+    _out.print("Dir.login: " + id.string())
+    _clients.push(Client(_out, id, this, _random.next()))
 
   be befriend() =>
     for friend in _clients.values() do
@@ -232,13 +260,15 @@ actor Directory
       | let poker: Poker => poker.finished()
       end
     end
-    
+
   be poke(factory: BehaviorFactory, accumulator: Accumulator) =>
+    _out.print("Dir.poke")
     for client in _clients.values() do
       client.act(factory, accumulator)
     end
 
   be disconnect(poker: Poker) =>
+    _out.print("Dir.disconnect")
     _poker = poker
 
     for c in _clients.values() do
@@ -253,8 +283,9 @@ actor Accumulator
   var _duration: F64
   var _expected: USize
   var _did_stop: Bool
+  let _out: OutStream
 
-  new create(poker: Poker, expected: USize) =>
+  new create(out: OutStream, poker: Poker, expected: USize) =>
     _poker = poker
     _actions = recover ActionMap end
     _start = Time.millis().f64()
@@ -262,6 +293,7 @@ actor Accumulator
     _duration = 0
     _expected = expected
     _did_stop = false
+    _out = out
 
   fun ref _count(action: Action) =>
     try
@@ -269,10 +301,22 @@ actor Accumulator
     else
       _actions(action) = 1
     end
+    let identifier =
+      match action
+      | Post    => "Post"
+      | Leave   => "Leave"
+      | Invite  => "Invite"
+      | Compute => "Compute"
+      | None    => "None"
+    else
+      "nil"
+    end
+    _out.print("Accumulator.stop: expected: " + _expected.string() + " action: " + identifier)
 
   be bump(action: Action, expected: USize) =>
     _count(action)
     _expected = ( _expected + expected ) - 1
+    _out.print("Accumulator.bump: " + expected.string() +  " _expected: " + _expected.string())
 
   be stop(action: Action = Ignore) =>
     _count(action)
@@ -284,6 +328,9 @@ actor Accumulator
       _did_stop = true
 
       _poker.confirm()
+    end
+    if _expected < 0 then
+      _out.print("  ## Accumulator.stop: " + _expected.string())
     end
 
    be print(poker: Poker, i: USize, j: USize) =>
@@ -304,8 +351,9 @@ actor Poker
   var _bench: (AsyncBenchmarkCompletion | None)
   var _last: Bool
   var _turn_series: Array[F64]
+  let _out: OutStream
 
-  new create(clients: U64, turns: U64, directories: USize, befriend: U32, factory: BehaviorFactory) =>
+  new create(out: OutStream, clients: U64, turns: U64, directories: USize, befriend: U32, factory: BehaviorFactory) =>
     _actions = ActionMap
     _clients = clients
     _logouts = 0
@@ -319,6 +367,8 @@ actor Poker
     _bench = None
     _last = false
     _turn_series = Array[F64]
+    _out = out
+    _out.print("Poker.start. dirSize: " + directories.string())
 
     let rand = SimpleRand(42)
 
@@ -326,7 +376,7 @@ actor Poker
       let dirs = Array[Directory](directories)
 
       for i in Range[USize](0, directories.usize()) do
-        dirs.push(Directory(rand.next(), befriend))
+        dirs.push(Directory(out, rand.next(), befriend))
       end
 
       dirs
@@ -334,6 +384,7 @@ actor Poker
 
 
   be apply(bench: AsyncBenchmarkCompletion, last: Bool) =>
+    _out.print("Poker.start. dirSize: " + _directories.size().string())
     _confirmations = _turns.usize()
     _logouts = _directories.size()
     _bench = bench
@@ -346,10 +397,12 @@ actor Poker
 
     _finals.push(values)
 
-    for client in Range[U64](0, _clients) do
+    _out.print("Poker start.login")
+
+    for clientId in Range[U64](0, _clients) do
       try
-        index = client.usize() % _directories.size()
-        _directories(index)?.login(client)
+        index = clientId.usize() % _directories.size()
+        _directories(index)?.login(clientId)
       end
     end
 
@@ -359,7 +412,7 @@ actor Poker
     end
 
     while ( turns = turns - 1 ) >= 1 do
-      let accumulator = Accumulator(this, _clients.usize())
+      let accumulator = Accumulator(_out, this, _clients.usize())
 
       for directory in _directories.values() do
         directory.poke(_factory, accumulator)
@@ -369,6 +422,7 @@ actor Poker
     end
 
   be confirm() =>
+    _out.print("Poker.confirm")
     _confirmations = _confirmations - 1
     if _confirmations == 0 then
       for d in _directories.values() do
@@ -376,8 +430,14 @@ actor Poker
       end
     end
 
+    if _confirmations < 0 then
+      _out.print("  ## Poker.confirm: " + _confirmations.string())
+    end
+
   be finished() =>
     _logouts = _logouts - 1
+    _out.print("Poker.finished remaining logouts=" + _logouts.string())
+
     if _logouts == 0 then
       var turn: USize = 0
 
@@ -390,7 +450,12 @@ actor Poker
       _runtimes = Array[Accumulator]
     end
 
+    if _logouts < 0 then
+      _out.print("  ## Poker.finished: " + _logouts.string())
+    end
+
   be collect(i: USize, j: USize, duration: F64, actions: ActionMap val) =>
+    _out.print("Poker.collect: accumulations=" + _accumulations.string())
     for (key, value) in actions.pairs() do
       try
         _actions(key) = value + _actions(key)?
@@ -405,8 +470,35 @@ actor Poker
     end
 
     _accumulations = _accumulations - 1
+    if _accumulations < 0 then
+      _out.print("  ## Poker.collect: " + _accumulations.string())
+    end
+
     if _accumulations == 0 then
+      _out.print("Poker.collect: ==1 accumulations=" + _accumulations.string())
       _iteration = _iteration + 1
+
+      for (key, value) in _actions.pairs() do
+        // could make 'Actions' stringable
+        let identifier =
+          match key
+          | Post    => "Post"
+          | Leave   => "Leave"
+          | Invite  => "Invite"
+          | Compute => "Compute"
+          | None    => "None"
+          else
+            "null"
+          end
+
+        _out.print(
+          "".join([
+              Format(identifier where width = 8)
+              Format(value.string() where width = 10, align = AlignRight)
+            ].values()
+          )
+        )
+      end
 
       match _bench
       | let bench: AsyncBenchmarkCompletion => bench.complete()
@@ -517,9 +609,9 @@ class iso ChatApp is AsyncActorBenchmark
 
     _factory = recover BehaviorFactory(compute, post, leave, invite) end
 
-    _poker = Poker(_clients, _turns, directories, befriend, _factory)
+    _poker = Poker(env.out, _clients, _turns, directories, befriend, _factory)
 
-  fun box apply(c: AsyncBenchmarkCompletion, last: Bool) => 
+  fun box apply(c: AsyncBenchmarkCompletion, last: Bool) =>
     if _invalid_args == false then
       _poker(c, last)
     else
