@@ -76,6 +76,7 @@ class Chat usingPlatform: platform = Value (
   | private id = id.
     private friends <Vector[FarReference[Client]]> = Vector new.
     private chats   <Vector[FarReference[Chat]]>   = Vector new.
+    private created <Vector[FarReference[Chat]]>   = Vector new.
     private directory = directory.
     private rand = SimpleRand new: seed.
     private dice = DiceRoll new: rand.
@@ -97,6 +98,7 @@ class Chat usingPlatform: platform = Value (
 
     public left: chat <FarReference[Chat]> didLogout: didLogout accu: accumulator = (
       chats remove: chat.
+      created remove: chat.
 
       (chats isEmpty and: [ didLogout ])
         ifTrue: [ directory <-: left: self ]
@@ -129,24 +131,25 @@ class Chat usingPlatform: platform = Value (
 
     public act: behavior accu: accumulator = (
       | b index |
-      index:: (rand nextInt: chats size) + 1.
+      index:: (rand nextInt: created size) + 1.
       b:: behavior determineAction: dice.
 
       b = #post ifTrue: [
-        | chatsSize = chats size. |
+        | chatsSize = created size. |
+        (chatsSize = 0) println.
         chatsSize = 0 ifTrue: [
           accumulator <-: stop: #none.
           ^ self ].
-        (chats at: index) <-: post: nil accu: accumulator.
+        (created at: index) <-: post: nil accu: accumulator.
         ^ self ].
 
       b = #leave ifTrue: [
-        | chatsSize = chats size. |
-        chatsSize = 0 ifTrue: [
+        | chatsSize = created size. |
+        chatsSize < 2 ifTrue: [
           accumulator <-: stop: #none.
           ^ self ].
 
-        (chats at: index) <-: leave: self didLogout: false accu: accumulator.
+        (created at: index) <-: leave: self didLogout: false accu: accumulator.
         ^ self ].
 
       b = #compute ifTrue: [
@@ -171,8 +174,9 @@ class Chat usingPlatform: platform = Value (
 
         accumulator <-: bump: invitations act: #invite.
 
-        createdChatAppendedP:: createdP whenResolved: [:created |
-          chats append: created.
+        createdChatAppendedP:: createdP whenResolved: [:createdChat |
+          chats append: createdChat.
+          created append: createdChat.
           self ].
 
         1 to: invitations do: [:i |
