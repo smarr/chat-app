@@ -157,7 +157,7 @@ class Chat usingPlatform: platform = Value (
 
       b = #invite ifTrue: [
         | createdP <Promise[Chat]> = (actors createActorFromValue: Chat) <-: new: self.
-          f i invitations |
+          f i invitations createdChatAppendedP |
         f:: friends asArray.
 
         rand shuffle: f.
@@ -171,13 +171,14 @@ class Chat usingPlatform: platform = Value (
 
         accumulator <-: bump: invitations act: #invite.
 
-        createdP whenResolved: [:created |
-          chats append: created ].
+        createdChatAppendedP:: createdP whenResolved: [:created |
+          chats append: created.
+          self ].
 
         1 to: invitations do: [:i |
           | k = f at: i. |
           createdP <-: join: k accu: accumulator ].
-        ^ self ].
+        ^ createdChatAppendedP ].
 
       (* else *)
       accumulator <-: stop: #none
@@ -217,8 +218,8 @@ class Chat usingPlatform: platform = Value (
     )
 
     public poke: factory accu: accumulator = (
-      clients do: [:client |
-        client <-: act: factory accu: accumulator ]
+      clients doIndexes: [:i |
+        clients at: i put: ((clients at: i) <-: act: factory accu: accumulator) ]
     )
 
     public disconnect: p = (
