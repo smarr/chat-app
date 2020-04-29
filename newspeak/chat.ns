@@ -177,12 +177,16 @@ accumulator <-: bump: members size act: #post.
 
         invitations:: friends size > 0
           ifTrue: [ rand next % friends size ]
-          ifFalse: [ 0 ].
+          ifFalse: [
+            self error: 'Error: this should never happen. friends size == 0??'.
+            1 ].
 
         invitations = 0 ifTrue: [
           invitations:: 1 ].
 
         accumulator <-: bump: invitations act: #invite.
+
+        ('\tClient.act: ' + id + ' chat created for: ' + invitations) println.
 
         createdChatAppendedP:: createdP whenResolved: [:createdChat |
           ('\tClient.act: ' + id + ' chat created') println.
