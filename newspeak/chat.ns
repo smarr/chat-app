@@ -44,17 +44,23 @@ class Chat usingPlatform: platform = Value (
   )(
     public post: payload <Array | nil> accu: accumulator = (
       BenchNoBufferedChats
-        ifFalse: [ buffer append: payload ].
+        ifFalse: [
+          'Chat.post buffered' println.
+          buffer append: payload ].
 
       members isEmpty
-        ifTrue: [ accumulator <-: stop: #post ]
+        ifTrue: [
+          'Chat.post empty stop' println.
+          accumulator <-: stop: #post ]
         ifFalse: [
-          accumulator <-: bump: members size act: #post.
+          ('Chat.post forward to ' + members size) println.
+accumulator <-: bump: members size act: #post.
           members do: [:m |
             m <-: forward: self payload: payload accu: accumulator ] ]
     )
 
     public join: client accu: accumulator = (
+      ('Chat.join: ' + client) println.
       members append: client.
 
       BenchNoBufferedChats ifFalse: [
@@ -133,22 +139,26 @@ class Chat usingPlatform: platform = Value (
       | b index |
       index:: (rand nextInt: created size) + 1.
       b:: behavior determineAction: dice.
+      ('Client.act: ' + id + ' #chats: ' + chats size + ' action: ' + b) println.
 
       b = #post ifTrue: [
         | chatsSize = created size. |
-        (chatsSize = 0) println.
         chatsSize = 0 ifTrue: [
+          ('\tClient.act: ' + id + ' no post') println.
           accumulator <-: stop: #none.
           ^ self ].
+        ('\tClient.act: ' + id + ' do actual post') println.
         (created at: index) <-: post: nil accu: accumulator.
         ^ self ].
 
       b = #leave ifTrue: [
         | chatsSize = created size. |
         chatsSize < 2 ifTrue: [
+          ('\tClient.act: ' + id + ' no leave') println.
           accumulator <-: stop: #none.
           ^ self ].
 
+        ('\tClient.act: ' + id + ' do actual leave') println.
         (created at: index) <-: leave: self didLogout: false accu: accumulator.
         ^ self ].
 
@@ -175,6 +185,7 @@ class Chat usingPlatform: platform = Value (
         accumulator <-: bump: invitations act: #invite.
 
         createdChatAppendedP:: createdP whenResolved: [:createdChat |
+          ('\tClient.act: ' + id + ' chat created') println.
           chats append: createdChat.
           created append: createdChat.
           self ].
@@ -222,6 +233,7 @@ class Chat usingPlatform: platform = Value (
     )
 
     public poke: factory accu: accumulator = (
+      'Directory.poke' println.
       clients doIndexes: [:i |
         clients at: i put: ((clients at: i) <-: act: factory accu: accumulator) ]
     )
