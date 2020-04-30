@@ -239,7 +239,7 @@ class Chat usingPlatform: platform = Value (
     )
 
     public left: client <FarReference[Client]> = (
-      debug: ['Dir.left(' + dId + ')'].
+      debug: ['Dir.left(' + dId + ') clients size: ' + clients size + ' ' + client].
       clients remove: client.
 
       clients isEmpty ifTrue: [
