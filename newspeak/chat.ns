@@ -97,7 +97,7 @@ class Chat usingPlatform: platform = Value (
         ifTrue: [
           (* TODO: should I avoid using IDs, is this allowed? *)
           debug: ['Client.logout: ' + id + ' dir<-:left'].
-          directory <-: left: self.
+          directory <-: left: id.
           ^ self ].
 
       debug: ['Client.logout. <-: LEAVE: ' + id].
@@ -112,7 +112,7 @@ class Chat usingPlatform: platform = Value (
       (chats isEmpty and: [ didLogout ])
         ifTrue: [
           debug: ['Client.left: ' + id + ' dir<-left'].
-          directory <-: left: self ]
+          directory <-: left: id ]
         ifFalse: [
           accumulator == nil
             ifTrue: [ debug: ['Client.left: ' + id + ' accu==nil'] ]
@@ -213,7 +213,8 @@ class Chat usingPlatform: platform = Value (
   )
 
   class Directory new: seed with: befriend id: id = (
-  | private clients <Vector[FarReference[Client]]> = Vector new.
+  | private clients <Vector[Array[Integer,Promise[Client]]]> = Vector new.
+    private numClients ::= 0.
     private dId = id.
     private random = SimpleRand new: seed.
     private numBefriends = befriend.
@@ -222,49 +223,77 @@ class Chat usingPlatform: platform = Value (
   |)(
     public login: id = (
       | newClient = (actors createActorFromValue: Client) <-: create: id dir: self seed: random next. |
-      ^ newClient whenResolved: [:nc |
-          debug: ['Dir.login(' + dId + '): id=' + id].
-          clients append: nc.
-          self ]
+      debug: ['Dir.login(' + dId + '): id=' + id + ' nc: ' + newClient].
+      clients append: {id. newClient}.
+      numClients:: numClients + 1.
     )
 
     public befriend = (
       debug: ['Dir.befriend(' + dId + ')'].
-      clients do: [:friend |
-        clients do: [:client |
-          ((random nextInt: 100) < numBefriends and: [friend ~= client])
-            ifTrue: [
-              client <-: befriend: friend.
-              friend <-: befriend: client ] ] ]
+      clients do: [:friendTuple |
+        | friend fId |
+        friendTuple ~= nil ifTrue: [
+          friend:: friendTuple at: 2.
+          fId:: friendTuple at: 1.
+          clients do: [:clientTuple |
+            | client cId |
+            clientTuple ~= nil ifTrue: [
+              client:: clientTuple at: 2.
+              cId:: clientTuple at: 1.
+              (* at this point in time, we are guaranteed that *)
+              ((random nextInt: 100) < numBefriends and: [fId <> cId])
+                ifTrue: [
+                  client <-: befriend: friend.
+                  friend <-: befriend: client ] ] ] ] ]
     )
 
-    public left: client <FarReference[Client]> = (
-      debug: ['Dir.left(' + dId + ') clients size: ' + clients size + ' ' + client].
-      clients remove: client.
+    private remove: clientId <Integer> = (
+      clients doIndexes: [:i |
+        | tuple = clients at: i. |
+        tuple ~= nil ifTrue: [
+          (tuple at: 1) = clientId ifTrue: [
+            numClients:: numClients - 1.
+            clients at: i put: nil ] ] ]
+    )
 
-      clients isEmpty ifTrue: [
+    public left: clientId <Integer> = (
+      debug: ['Dir.left(' + dId + ') clients size: ' + clients size + ' ' + clientId].
+
+
+(* OK, so this goes all wrong because we switch far refs for promises,
+to get some completion ordering semantis for the act.
+Solution options:
+ - go back to id+promise pair
+ - unwrap the promises for deletion *)
+
+      remove: clientId.
+
+      numClients = 0 ifTrue: [
         clients removeAll.
         poker == nil
-          ifTrue: [ debug: ['Dir.left(' + dId + '): clientId=' + id + ' poker==nil'] ]
+          ifTrue: [ debug: ['Dir.left(' + dId + '): clientId=' + clientId + ' poker==nil'] ]
           ifFalse: [
-            debug: ['Dir.left(' + dId + '): clientId=' + id + ' poker<-finished'].
+            debug: ['Dir.left(' + dId + '): clientId=' + clientId + ' poker<-finished'].
             poker <-: finished ]
       ]
     )
 
     public poke: factory accu: accumulator = (
       debug: ['Dir.poke(' + dId + ') clients size: ' + clients size].
-      clients doIndexes: [:i |
-        debug: ['\tDir.poke(' + dId + ') act to ' + i + ' ' + (clients at: i) asString].
-        clients at: i put: ((clients at: i) <-: act: factory accu: accumulator) ]
+
+      clients do: [:tuple |
+        tuple ~= nil ifTrue: [
+          debug: ['\tDir.poke(' + dId + ') act to ' + (tuple at: 1) + ' ' + (tuple at: 2) asString].
+          tuple at: 2 put: ((tuple at: 2) <-: act: factory accu: accumulator) ] ]
     )
 
     public disconnect: p = (
       debug: ['Dir.disconnect(' + dId + ')'].
       poker:: p.
 
-      clients do: [:client |
-        client <-: logout ]
+      clients do: [:tuple |
+        tuple ~= nil ifTrue: [
+          (tuple at: 2) <-: logout ] ]
     )
   )
 
