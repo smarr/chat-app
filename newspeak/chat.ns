@@ -88,7 +88,7 @@ class Chat usingPlatform: platform = Value (
       chats isEmpty
         ifTrue: [
           (* TODO: should I avoid using IDs, is this allowed? *)
-          directory <-: left: self.
+          directory <-: left: id.
           ^ self ].
 
       chats do: [:c |
@@ -99,7 +99,7 @@ class Chat usingPlatform: platform = Value (
       chats remove: chat.
 
       (chats isEmpty and: [ didLogout ])
-        ifTrue: [ directory <-: left: self ]
+        ifTrue: [ directory <-: left: id ]
         ifFalse: [
           accumulator == nil ifFalse: [
             accumulator <-: stop: #leave ] ]
@@ -186,7 +186,8 @@ class Chat usingPlatform: platform = Value (
   )
 
   class Directory new: seed with: befriend = (
-  | private clients <Vector[FarReference[Client]]> = Vector new.
+  | private clients <Vector[Array[Integer,Promise[Client]]]> = Vector new.
+    private numClients ::= 0.
     private random = SimpleRand new: seed.
     private numBefriends = befriend.
     private completions ::= 0.
@@ -194,24 +195,44 @@ class Chat usingPlatform: platform = Value (
   |)(
     public login: id = (
       | newClient = (actors createActorFromValue: Client) <-: create: id dir: self seed: random next. |
-      ^ newClient whenResolved: [:nc |
-          clients append: nc.
-          self ]
+      clients append: {id. newClient}.
+      numClients:: numClients + 1.
     )
 
     public befriend = (
-      clients do: [:friend |
-        clients do: [:client |
-          ((random nextInt: 100) < numBefriends and: [friend ~= client])
-            ifTrue: [
-              client <-: befriend: friend.
-              friend <-: befriend: client ] ] ]
+      clients do: [:friendTuple |
+        | friend fId |
+        friendTuple ~= nil ifTrue: [
+          friend:: friendTuple at: 2.
+          fId:: friendTuple at: 1.
+          clients do: [:clientTuple |
+            | client cId |
+            clientTuple ~= nil ifTrue: [
+              client:: clientTuple at: 2.
+              cId:: clientTuple at: 1.
+              (* at this point in time, we are guaranteed that *)
+              ((random nextInt: 100) < numBefriends and: [fId <> cId])
+                ifTrue: [
+                  client <-: befriend: friend.
+                  friend <-: befriend: client ] ] ] ] ]
     )
 
-    public left: client <FarReference[Client]> = (
-      clients remove: client.
+    private remove: clientId <Integer> = (
+      clients doIndexes: [:i |
+        | tuple = clients at: i. |
+        tuple ~= nil ifTrue: [
+          (tuple at: 1) = clientId ifTrue: [
+            numClients:: numClients - 1.
+            clients at: i put: nil.
+            ^ self ] ] ].
 
-      clients isEmpty ifTrue: [
+      self error: 'Dir.left remove failed. clientId: ' + clientId
+    )
+
+    public left: clientId <Integer> = (
+      remove: clientId.
+
+      numClients = 0 ifTrue: [
         clients removeAll.
         poker == nil ifFalse: [
           poker <-: finished ]
@@ -219,15 +240,17 @@ class Chat usingPlatform: platform = Value (
     )
 
     public poke: factory accu: accumulator = (
-      clients doIndexes: [:i |
-        clients at: i put: ((clients at: i) <-: act: factory accu: accumulator) ]
+      clients do: [:tuple |
+        tuple ~= nil ifTrue: [
+          tuple at: 2 put: ((tuple at: 2) <-: act: factory accu: accumulator) ] ]
     )
 
     public disconnect: p = (
       poker:: p.
 
-      clients do: [:client |
-        client <-: logout ]
+      clients do: [:tuple |
+        tuple ~= nil ifTrue: [
+          (tuple at: 2) <-: logout ] ]
     )
   )
 
