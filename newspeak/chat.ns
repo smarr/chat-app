@@ -45,22 +45,22 @@ class Chat usingPlatform: platform = Value (
     public post: payload <Array | nil> accu: accumulator = (
       BenchNoBufferedChats
         ifFalse: [
-          'Chat.post buffered' println.
+          debug: 'Chat.post buffered'.
           buffer append: payload ].
 
       members isEmpty
         ifTrue: [
-          'Chat.post empty stop' println.
+          debug: 'Chat.post empty stop'.
           accumulator <-: stop: #post ]
         ifFalse: [
-          ('Chat.post forward to ' + members size) println.
-accumulator <-: bump: members size act: #post.
+          debug: ['Chat.post forward to ' + members size].
+          accumulator <-: bump: members size act: #post
           members do: [:m |
             m <-: forward: self payload: payload accu: accumulator ] ]
     )
 
-    public join: client accu: accumulator = (
-      ('Chat.join: ' + client) println.
+    public join: client <FarReference[Client]> accu: accumulator = (
+      debug: ['Chat.join: ' + client].
       members append: client.
 
       BenchNoBufferedChats ifFalse: [
@@ -95,9 +95,11 @@ accumulator <-: bump: members size act: #post.
       chats isEmpty
         ifTrue: [
           (* TODO: should I avoid using IDs, is this allowed? *)
+          debug: ['Client.logout: ' + id + ' dir<-:left'].
           directory <-: left: self.
           ^ self ].
 
+      debug: ['Client.logout. <-: LEAVE: ' + id].
       chats do: [:c |
         c <-: leave: self didLogout: true accu: nil ]
     )
@@ -107,9 +109,14 @@ accumulator <-: bump: members size act: #post.
       created remove: chat.
 
       (chats isEmpty and: [ didLogout ])
-        ifTrue: [ directory <-: left: self ]
+        ifTrue: [
+          debug: ['Client.left: ' + id + ' dir<-left'].
+          directory <-: left: self ]
         ifFalse: [
-          accumulator == nil ifFalse: [
+          accumulator == nil
+            ifTrue: [ debug: ['Client.left: ' + id + ' accu==nil'] ]
+            ifFalse: [
+            debug: ['Client.left: ' + id + ' accc<-stop leave'].
             accumulator <-: stop: #leave ] ]
     )
 
@@ -139,26 +146,26 @@ accumulator <-: bump: members size act: #post.
       | b index |
       index:: (rand nextInt: created size) + 1.
       b:: behavior determineAction: dice.
-      ('Client.act: ' + id + ' #chats: ' + chats size + ' action: ' + b) println.
+      debug: ['Client.act: ' + id + ' #chats: ' + chats size + ' action: ' + b].
 
       b = #post ifTrue: [
         | chatsSize = created size. |
         chatsSize = 0 ifTrue: [
-          ('\tClient.act: ' + id + ' no post') println.
+          debug: ['\tClient.act: ' + id + ' no post'].
           accumulator <-: stop: #none.
           ^ self ].
-        ('\tClient.act: ' + id + ' do actual post') println.
+        debug: ['\tClient.act: ' + id + ' do actual post'].
         (created at: index) <-: post: nil accu: accumulator.
         ^ self ].
 
       b = #leave ifTrue: [
         | chatsSize = created size. |
         chatsSize < 2 ifTrue: [
-          ('\tClient.act: ' + id + ' no leave') println.
+          debug: ['\tClient.act: ' + id + ' no leave'].
           accumulator <-: stop: #none.
           ^ self ].
 
-        ('\tClient.act: ' + id + ' do actual leave') println.
+        debug: ['\tClient.act: ' + id + ' do actual leave'].
         (created at: index) <-: leave: self didLogout: false accu: accumulator.
         ^ self ].
 
@@ -186,10 +193,10 @@ accumulator <-: bump: members size act: #post.
 
         accumulator <-: bump: invitations act: #invite.
 
-        ('\tClient.act: ' + id + ' chat created for: ' + invitations) println.
+        debug: ['\tClient.act: ' + id + ' chat created for: ' + invitations].
 
         createdChatAppendedP:: createdP whenResolved: [:createdChat |
-          ('\tClient.act: ' + id + ' chat created') println.
+          debug: ['\tClient.act: ' + id + ' chat created'].
           chats append: createdChat.
           created append: createdChat.
           self ].
@@ -204,8 +211,9 @@ accumulator <-: bump: members size act: #post.
     )
   )
 
-  class Directory new: seed with: befriend = (
+  class Directory new: seed with: befriend id: id = (
   | private clients <Vector[FarReference[Client]]> = Vector new.
+    private dId = id.
     private random = SimpleRand new: seed.
     private numBefriends = befriend.
     private completions ::= 0.
@@ -214,6 +222,7 @@ accumulator <-: bump: members size act: #post.
     public login: id = (
       | newClient = (actors createActorFromValue: Client) <-: create: id dir: self seed: random next. |
       ^ newClient whenResolved: [:nc |
+        debug: ['Dir.login(' + dId + '): id=' + id].
         clients append: nc ]
     )
 
@@ -227,22 +236,27 @@ accumulator <-: bump: members size act: #post.
     )
 
     public left: client <FarReference[Client]> = (
+      debug: ['Dir.left(' + dId + '): clientId=' + id].
       clients remove: client.
 
       clients isEmpty ifTrue: [
         clients removeAll.
-        poker == nil ifFalse: [
-          poker <-: finished ]
+        poker == nil
+          ifTrue: [ debug: ['Dir.left(' + dId + '): clientId=' + id + ' poker==nil'] ]
+          ifFalse: [
+            debug: ['Dir.left(' + dId + '): clientId=' + id + ' poker<-finished'].
+            poker <-: finished ]
       ]
     )
 
     public poke: factory accu: accumulator = (
-      'Directory.poke' println.
+      debug: ['Directory.poke(' + dId + ')'].
       clients doIndexes: [:i |
         clients at: i put: ((clients at: i) <-: act: factory accu: accumulator) ]
     )
 
     public disconnect: p = (
+      debug: ['Dir.disconnect(' + dId + ')'].
       poker:: p.
 
       clients do: [:client |
@@ -262,7 +276,8 @@ accumulator <-: bump: members size act: #post.
   |)(
     public bump: anInt act: action = (
       recordAction: action.
-      expected:: expected + anInt - 1
+      expected:: expected + anInt - 1.
+      debug: ['Acc.bump(' + turn + '). Exp: ' + expected + ' act: ' + action]
     )
 
     private recordAction: action = (
@@ -280,6 +295,8 @@ accumulator <-: bump: members size act: #post.
       recordAction: action.
 
       expected:: expected - 1.
+
+      debug: ['Acc.stop(' + turn + '). stop: ' + expected + '\tact: ' + action].
       expected = 0 ifTrue: [
         end:: system ticks.
         duration:: end - start.
@@ -304,8 +321,10 @@ accumulator <-: bump: members size act: #post.
     private turns ::= numTurns.
     private iteration ::= 1.
     private rand = SimpleRand new: 42.
-    private directories = Array new: dirs withAll: [
-      (actors createActorFromValue: Directory) <-: new: rand next with: befriend ].
+
+    private dId ::= -1.
+    private directories = Array new: dirs withAll: [ dId:: dId + 1.
+      (actors createActorFromValue: Directory) <-: new: rand next with: befriend id: dId ].
     private runtimes ::= Vector new.
     private accumulations ::= 0.
     private finals = Vector new.
@@ -317,6 +336,7 @@ accumulator <-: bump: members size act: #post.
     private turnSeries = Array new: numTurns. *)
   |)(
     public start: aBench isLast: isLast = (
+      debug: ['Poker.start. dirSize: ' + directories size].
       confirmations:: turns.
       logouts:: directories size.
       bench:: aBench.
@@ -329,6 +349,7 @@ accumulator <-: bump: members size act: #post.
         | index |
         index:: (clientId % directories size) + 1.
 
+        debug: ['Poker.start login cId: ' + clientId + ' clients: ' + clients].
         (directories at: index) <-: login: clientId ].
 
       directories do: [:directory |
@@ -349,6 +370,7 @@ accumulator <-: bump: members size act: #post.
       turnSeries at: turn put: duration.*)
 
     public confirm = (
+      debug: 'Poker.confirm'.
       confirmations:: confirmations - 1.
       confirmations = 0 ifTrue: [
         directories do: [:d |
@@ -357,6 +379,7 @@ accumulator <-: bump: members size act: #post.
 
     public finished = (
       logouts:: logouts - 1.
+      debug: ['Poker.finished: remaining logouts=' + logouts].
       logouts = 0 ifTrue: [
         | turn ::= 1. |
         runtimes do: [:accumulator |
@@ -543,7 +566,7 @@ accumulator <-: bump: members size act: #post.
 
           startTime:: system ticks.
 
-          'Runner.run: ' print. iterations println.
+          debug: ['Runner.run: ' + iterations].
 
           benchmark run: self isLast: iterations = 1.
           iterations:: iterations - 1.
@@ -575,5 +598,9 @@ accumulator <-: bump: members size act: #post.
     cfg print.
     runner:: (actors createActorFromValue: Runner) <-: new: cfg.
     ^ (runner <-: start: 32)
+  )
+
+  private debug: aBlock = (
+    aBlock value println.
   )
 )
