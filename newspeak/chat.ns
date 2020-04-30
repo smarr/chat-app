@@ -88,6 +88,7 @@ class Chat usingPlatform: platform = Value (
     private dice = DiceRoll new: rand.
   |)(
     public befriend: client <FarReference[Client]> = (
+      debug: ['Client.befriend id: ' + id ].
       friends append: client
     )
 
@@ -227,6 +228,7 @@ class Chat usingPlatform: platform = Value (
     )
 
     public befriend = (
+      debug: ['Dir.befriend(' + dId + ')'].
       clients do: [:friend |
         clients do: [:client |
           ((random nextInt: 100) < numBefriends and: [friend ~= client])
@@ -236,7 +238,7 @@ class Chat usingPlatform: platform = Value (
     )
 
     public left: client <FarReference[Client]> = (
-      debug: ['Dir.left(' + dId + '): clientId=' + id].
+      debug: ['Dir.left(' + dId + ')'].
       clients remove: client.
 
       clients isEmpty ifTrue: [
@@ -250,8 +252,9 @@ class Chat usingPlatform: platform = Value (
     )
 
     public poke: factory accu: accumulator = (
-      debug: ['Directory.poke(' + dId + ')'].
+      debug: ['Dir.poke(' + dId + ') clients size: ' + clients size].
       clients doIndexes: [:i |
+        debug: ['\tDir.poke(' + dId + ') act to ' + i + ' ' + (clients at: i) asString].
         clients at: i put: ((clients at: i) <-: act: factory accu: accumulator) ]
     )
 
@@ -352,7 +355,10 @@ class Chat usingPlatform: platform = Value (
         debug: ['Poker.start login cId: ' + clientId + ' clients: ' + clients].
         (directories at: index) <-: login: clientId ].
 
+      debug: 'Poker.start after logins'.
+
       directories do: [:directory |
+        debug: 'Poker.start befriend'.
         directory <-: befriend ].
 
       1 to: turns do: [:i |
