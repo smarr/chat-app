@@ -223,8 +223,9 @@ class Chat usingPlatform: platform = Value (
     public login: id = (
       | newClient = (actors createActorFromValue: Client) <-: create: id dir: self seed: random next. |
       ^ newClient whenResolved: [:nc |
-        debug: ['Dir.login(' + dId + '): id=' + id].
-        clients append: nc ]
+          debug: ['Dir.login(' + dId + '): id=' + id].
+          clients append: nc.
+          self ]
     )
 
     public befriend = (
@@ -326,7 +327,7 @@ class Chat usingPlatform: platform = Value (
     private rand = SimpleRand new: 42.
 
     private dId ::= -1.
-    private directories = Array new: dirs withAll: [ dId:: dId + 1.
+    private directories <Promise[Directory]> = Array new: dirs withAll: [ dId:: dId + 1.
       (actors createActorFromValue: Directory) <-: new: rand next with: befriend id: dId ].
     private runtimes ::= Vector new.
     private accumulations ::= 0.
@@ -353,17 +354,21 @@ class Chat usingPlatform: platform = Value (
         index:: (clientId % directories size) + 1.
 
         debug: ['Poker.start login cId: ' + clientId + ' clients: ' + clients].
-        (directories at: index) <-: login: clientId ].
+        (* Sequentialize all login operations on completion *)
+        directories at: index put: ((directories at: index) <-: login: clientId) ].
 
       debug: 'Poker.start after logins'.
 
-      directories do: [:directory |
+      directories doIndexes: [:index |
         debug: 'Poker.start befriend'.
-        directory <-: befriend ].
+        (* Sequentialize all befriend operations on completion *)
+        directories at: index put: ((directories at: index) <-: befriend) ].
 
       1 to: turns do: [:i |
         | accumulator = (actors createActorFromValue: Accumulator) <-: new: self expected: clients turns: i. |
         directories do: [:d |
+          (* poke operations require completion of login and befriend,
+             but otherwise, don't wait for completion *)
           d <-: poke: factory accu: accumulator ].
 
         runtimes append: accumulator ].
