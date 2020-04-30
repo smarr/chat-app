@@ -54,7 +54,7 @@ class Chat usingPlatform: platform = Value (
           accumulator <-: stop: #post ]
         ifFalse: [
           debug: ['Chat.post forward to ' + members size].
-          accumulator <-: bump: members size act: #post
+          accumulator <-: bump: members size act: #post.
           members do: [:m |
             m <-: forward: self payload: payload accu: accumulator ] ]
     )
