@@ -79,6 +79,8 @@ class Chat usingPlatform: platform = Value (
     private directory = directory.
     private rand = SimpleRand new: seed.
     private dice = DiceRoll new: rand.
+
+    private dirLeft ::= false.
   |)(
     public befriend: client <FarReference[Client]> = (
       friends append: client
@@ -98,8 +100,10 @@ class Chat usingPlatform: platform = Value (
     public left: chat <FarReference[Chat]> didLogout: didLogout accu: accumulator = (
       chats remove: chat.
 
-      (chats isEmpty and: [ didLogout ])
-        ifTrue: [ directory <-: left: id ]
+      (chats isEmpty and: [ didLogout and: [ dirLeft not ]])
+        ifTrue: [
+          directory <-: left: id.
+          dirLeft:: true ]
         ifFalse: [
           accumulator == nil ifFalse: [
             accumulator <-: stop: #leave ] ]
