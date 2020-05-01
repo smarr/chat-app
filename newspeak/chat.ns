@@ -212,8 +212,11 @@ class Chat usingPlatform: platform = Value (
 
         1 to: invitations do: [:i |
           | k = f at: i. |
-          debug: ['\tClient.act: ' + id + ' send join'].
-          createdP <-: join: k accu: accumulator clientId: id ].
+          debug: ['\tClient.act: ' + id + ' whenResolved: (i: ' + i + ' f size: ' + f size + ')'].
+          k whenResolved: [:clientFarRef |
+            debug: ['\tClient.act: ' + id + ' send join'].
+            createdP <-: join: clientFarRef accu: accumulator clientId: id ] ].
+
         ^ createdChatAppendedP ].
 
       (* else *)
