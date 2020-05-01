@@ -42,7 +42,7 @@ class Chat usingPlatform: platform = Value (
   |
     members append: initiator.
   )(
-    public post: payload <Array | nil> accu: accumulator = (
+    public post: payload <Array | nil> accu: accumulator clientId: cId = (
       BenchNoBufferedChats
         ifFalse: [
           debug: 'Chat.post buffered'.
@@ -51,30 +51,35 @@ class Chat usingPlatform: platform = Value (
       members isEmpty
         ifTrue: [
           debug: 'Chat.post empty stop'.
-          accumulator <-: stop: #post ]
+          accumulator <-: stop: #post clientId: cId ]
         ifFalse: [
           debug: ['Chat.post forward to ' + members size].
-          accumulator <-: bump: members size act: #post.
+          accumulator <-: bump: members size act: #post clientId: cId.
           members do: [:m |
-            m <-: forward: self payload: payload accu: accumulator ] ]
+            m <-: forward: self payload: payload accu: accumulator clientId: cId ] ]
     )
 
-    public join: client <FarReference[Client]> accu: accumulator = (
+    public join: client <FarReference[Client]> accu: accumulator clientId: cId = (
       debug: ['Chat.join: ' + client].
       members append: client.
+      debug: ['\tChat.join: ' + client + ' member size: ' + members size].
 
       BenchNoBufferedChats ifFalse: [
         buffer size > 0 ifTrue: [
-          accumulator <-: bump: buffer size act: #ignore.
+          debug: ['Chat.join send bump for ' + buffer size].
+          accumulator <-: bump: buffer size act: #ignore clientId: cId.
           buffer do: [:m |
-            client <-: forward: self payload: m accu: accumulator ] ] ].
+            client <-: forward: self payload: m accu: accumulator clientId: cId ] ] ].
 
-      client <-: accept: self accu: accumulator.
+      client <-: accept: self accu: accumulator clientId: cId.
     )
 
-    public leave: client didLogout: didLogout accu: accumulator = (
-      members remove: client.
-      client <-: left: self didLogout: didLogout accu: accumulator
+    public leave: client <FarReference[Client]> didLogout: didLogout accu: accumulator clientId: cId = (
+      | removed |
+      removed:: members remove: client.
+      debug: ['Chat.leave: ' + client + ' members size: ' + members size + ' removed: ' + removed].
+
+      client <-: left: self didLogout: didLogout accu: accumulator clientId: cId
     )
   )
 
@@ -102,10 +107,10 @@ class Chat usingPlatform: platform = Value (
 
       debug: ['Client.logout. <-: LEAVE: ' + id].
       chats do: [:c |
-        c <-: leave: self didLogout: true accu: nil ]
+        c <-: leave: self didLogout: true accu: nil clientId: id ]
     )
 
-    public left: chat <FarReference[Chat]> didLogout: didLogout accu: accumulator = (
+    public left: chat <FarReference[Chat]> didLogout: didLogout accu: accumulator clientId: cId = (
       chats remove: chat.
       created remove: chat.
 
@@ -118,16 +123,16 @@ class Chat usingPlatform: platform = Value (
             ifTrue: [ debug: ['Client.left: ' + id + ' accu==nil'] ]
             ifFalse: [
             debug: ['Client.left: ' + id + ' accc<-stop leave'].
-            accumulator <-: stop: #leave ] ]
+            accumulator <-: stop: #leave clientId: cId ] ]
     )
 
-    public accept: chat <FarReference[Chat]> accu: accumulator = (
+    public accept: chat <FarReference[Chat]> accu: accumulator clientId: cId = (
       chats append: chat.
-      accumulator <-: stop: #ignore
+      accumulator <-: stop: #ignore clientId: cId
     )
 
-    public forward: chat <FarReference[Chat]> payload: payload <Array | nil> accu: accumulator = (
-      accumulator <-: stop: #postDelivery
+    public forward: chat <FarReference[Chat]> payload: payload <Array | nil> accu: accumulator clientId: cId = (
+      accumulator <-: stop: #postDelivery clientId: cId
     )
 
     private fibonacci: n = (
@@ -153,27 +158,27 @@ class Chat usingPlatform: platform = Value (
         | chatsSize = created size. |
         chatsSize = 0 ifTrue: [
           debug: ['\tClient.act: ' + id + ' no post'].
-          accumulator <-: stop: #none.
+          accumulator <-: stop: #none clientId: id.
           ^ self ].
         debug: ['\tClient.act: ' + id + ' do actual post'].
-        (created at: index) <-: post: nil accu: accumulator.
+        (created at: index) <-: post: nil accu: accumulator clientId: id.
         ^ self ].
 
       b = #leave ifTrue: [
         | chatsSize = created size. |
         chatsSize < 2 ifTrue: [
           debug: ['\tClient.act: ' + id + ' no leave'].
-          accumulator <-: stop: #none.
+          accumulator <-: stop: #none clientId: id.
           ^ self ].
 
         debug: ['\tClient.act: ' + id + ' do actual leave'].
-        (created at: index) <-: leave: self didLogout: false accu: accumulator.
+        (created at: index) <-: leave: self didLogout: false accu: accumulator clientId: id.
         ^ self ].
 
       b = #compute ifTrue: [
         (* TODO: make sure this is not optimized out *)
         fibonacci: 35.
-        accumulator <-: stop: #compute.
+        accumulator <-: stop: #compute clientId: id.
         ^ self ].
 
       b = #invite ifTrue: [
@@ -182,6 +187,9 @@ class Chat usingPlatform: platform = Value (
         f:: friends asArray.
 
         rand shuffle: f.
+
+        debug: [
+          (f size = friends size) ifTrue: [''] ifFalse: ['f ~= friends'] ].
 
         invitations:: friends size > 0
           ifTrue: [ rand next % friends size ]
@@ -192,7 +200,7 @@ class Chat usingPlatform: platform = Value (
         invitations = 0 ifTrue: [
           invitations:: 1 ].
 
-        accumulator <-: bump: invitations act: #invite.
+        accumulator <-: bump: invitations act: #invite clientId: id.
 
         debug: ['\tClient.act: ' + id + ' chat created for: ' + invitations].
 
@@ -204,11 +212,12 @@ class Chat usingPlatform: platform = Value (
 
         1 to: invitations do: [:i |
           | k = f at: i. |
-          createdP <-: join: k accu: accumulator ].
+          debug: ['\tClient.act: ' + id + ' send join'].
+          createdP <-: join: k accu: accumulator clientId: id ].
         ^ createdChatAppendedP ].
 
       (* else *)
-      accumulator <-: stop: #none
+      accumulator <-: stop: #none clientId: id
     )
   )
 
@@ -310,10 +319,10 @@ Solution options:
     private expected ::= anInt.
     private didStop ::= false.
   |)(
-    public bump: anInt act: action = (
+    public bump: anInt act: action clientId: clientId = (
       recordAction: action.
       expected:: expected + anInt - 1.
-      debug: ['Acc.bump(' + turn + '). Exp: ' + expected + ' act: ' + action]
+      debug: ['Acc.bump(t:' + turn + ' c:' + clientId + '). Exp: ' + expected + '\tact: ' + action]
     )
 
     private recordAction: action = (
@@ -327,12 +336,12 @@ Solution options:
       actions at: 7 put: 1 + (actions at: 7)
     )
 
-    public stop: action = (
+    public stop: action clientId: clientId = (
       recordAction: action.
 
       expected:: expected - 1.
 
-      debug: ['Acc.stop(' + turn + '). stop: ' + expected + '\tact: ' + action].
+      debug: ['Acc.stop(t:' + turn + ' c:' + clientId + '). Exp: ' + expected + '\tact: ' + action].
       expected = 0 ifTrue: [
         end:: system ticks.
         duration:: end - start.
