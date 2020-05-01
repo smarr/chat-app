@@ -649,7 +649,7 @@ Solution options:
     cfg:: Config new: args.
     cfg print.
     runner:: (actors createActorFromValue: Runner) <-: new: cfg.
-    ^ (runner <-: start: 1)
+    ^ (runner <-: start: 32)
   )
 
   private debug: aBlock = (
