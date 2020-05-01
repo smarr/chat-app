@@ -268,7 +268,10 @@ class Chat usingPlatform: platform = Value (
         tuple ~= nil ifTrue: [
           (tuple at: 1) = clientId ifTrue: [
             numClients:: numClients - 1.
-            clients at: i put: nil ] ] ]
+            clients at: i put: nil.
+            ^ self ] ] ].
+
+      self error: 'Dir.left remove failed. clientId: ' + clientId
     )
 
     public left: clientId <Integer> = (
