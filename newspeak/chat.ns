@@ -619,7 +619,7 @@ class Chat usingPlatform: platform = Value (
 
           startTime:: system ticks.
 
-          debug: ['Runner.run: ' + iterations].
+          ('Runner.run: ' + iterations) println.
 
           benchmark run: self isLast: iterations = 1.
           iterations:: iterations - 1.
