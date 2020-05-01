@@ -176,8 +176,9 @@ class Chat usingPlatform: platform = Value (
           self ].
 
         1 to: invitations do: [:i |
-          | k = f at: i. |
-          createdP <-: join: k accu: accumulator ].
+          | clientP = f at: i. |
+          clientP whenResolved: [:clientFarRef |
+            createdP <-: join: clientFarRef accu: accumulator ] ].
         ^ createdChatAppendedP ].
 
       (* else *)
