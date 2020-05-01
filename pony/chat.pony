@@ -93,7 +93,7 @@ actor Chat
 
   be join(client: Client, accumulator: Accumulator) =>
     _members.push(client)
-    _out.print("Chat.join #members: " + _members.size().string())
+    // _out.print("Chat.join #members: " + _members.size().string())
 
     ifdef not "_BENCH_NO_BUFFERED_CHATS" then
       if _buffer.size() > 0 then
@@ -133,14 +133,14 @@ actor Client
     _rand = SimpleRand(seed)
     _dice = DiceRoll(_rand)
     _out = out
-    _out.print("Client.created: id="+id.string() + " seed: " + seed.string())
+    // _out.print("Client.created: id="+id.string() + " seed: " + seed.string())
 
   be befriend(client: Client) =>
     _friends.push(client)
-    _out.print("Client.befrient: " + _id.string() + " #friends: " + _friends.size().string())
+    // _out.print("Client.befrient: " + _id.string() + " #friends: " + _friends.size().string())
 
   be logout() =>
-    _out.print("Client.logout: " + _id.string() + " #friends: " + _friends.size().string())
+    // _out.print("Client.logout: " + _id.string() + " #friends: " + _friends.size().string())
     for chat in _chats.values() do
       chat.leave(this, true, None)
     else
@@ -148,7 +148,7 @@ actor Client
     end
 
   be left(chat: Chat, did_logout: Bool, accumulator: (Accumulator | None)) =>
-    _out.print("Client.left: " + _id.string() + " didLogout: " + did_logout.string() + " #friends: " + _friends.size().string())
+    // _out.print("Client.left: " + _id.string() + " didLogout: " + did_logout.string() + " #friends: " + _friends.size().string())
     for (i, c) in _chats.pairs() do
       if c is chat then
         _chats.remove(i, 1) ; break
@@ -165,11 +165,11 @@ actor Client
 
   be accepted(chat: Chat, accumulator: Accumulator) =>
     _chats.push(chat)
-    _out.print("Client.invite: " + _id.string() + " #chats: " + _chats.size().string())
+    // _out.print("Client.invite: " + _id.string() + " #chats: " + _chats.size().string())
     accumulator.stop(Ignore)
 
   be forward(chat: Chat, payload: (Array[U8] val | None), accumulator: Accumulator) =>
-    _out.print("Client.forward: " + _id.string())
+    // _out.print("Client.forward: " + _id.string())
     accumulator.stop(PostDelivery)
 
   be act(behavior: BehaviorFactory, accumulator: Accumulator) =>
@@ -183,7 +183,7 @@ actor Client
               | Compute => "Compute"
               | None    => "None"
               end
-    _out.print("Client.act: " + _id.string() + " #chats: " + _chats.size().string() + " action: " + actionName.string())
+    // _out.print("Client.act: " + _id.string() + " #chats: " + _chats.size().string() + " action: " + actionName.string())
 
     try
       match action
@@ -212,7 +212,7 @@ actor Client
         Fact(false)?
       end
     else
-      _out.print("Client.act: " + _id.string() + " stop: none 2")
+      // _out.print("Client.act: " + _id.string() + " stop: none 2")
       try 
         Assert((_chats.size() == 0) and (_friends.size() > 0))?
         accumulator.stop(None)
@@ -228,14 +228,14 @@ actor Directory
 
   new create(out: OutStream, seed: U64, befriend': U32) =>
     _clients = ClientSeq
-    out.print("Directory.create: " + seed.string())
+    // out.print("Directory.create: " + seed.string())
     _random = SimpleRand(seed)
     _befriend = befriend'
     _poker = None
     _out = out
 
   be login(id: U64) =>
-    _out.print("Dir.login: " + id.string())
+    // _out.print("Dir.login: " + id.string())
     _clients.push(Client(_out, id, this, _random.next()))
 
   be befriend() =>
@@ -262,13 +262,13 @@ actor Directory
     end
 
   be poke(factory: BehaviorFactory, accumulator: Accumulator) =>
-    _out.print("Dir.poke")
+    // _out.print("Dir.poke")
     for client in _clients.values() do
       client.act(factory, accumulator)
     end
 
   be disconnect(poker: Poker) =>
-    _out.print("Dir.disconnect")
+    // _out.print("Dir.disconnect")
     _poker = poker
 
     for c in _clients.values() do
@@ -311,12 +311,12 @@ actor Accumulator
     else
       "nil"
     end
-    _out.print("Accumulator.stop: expected: " + _expected.string() + " action: " + identifier)
+    // _out.print("Accumulator.stop: expected: " + _expected.string() + " action: " + identifier)
 
   be bump(action: Action, expected: USize) =>
     _count(action)
     _expected = ( _expected + expected.isize() ) - 1
-    _out.print("Accumulator.bump: " + expected.string() +  " _expected: " + _expected.string())
+    // _out.print("Accumulator.bump: " + expected.string() +  " _expected: " + _expected.string())
 
   be stop(action: Action = Ignore) =>
     _count(action)
@@ -370,7 +370,7 @@ actor Poker
     _last = false
     _turn_series = Array[F64]
     _out = out
-    _out.print("Poker.start. dirSize: " + directories.string())
+    // _out.print("Poker.start. dirSize: " + directories.string())
 
     let rand = SimpleRand(42)
 
@@ -385,7 +385,7 @@ actor Poker
     end
 
   be apply(bench: AsyncBenchmarkCompletion, last: Bool) =>
-    _out.print("Poker.start. dirSize: " + _directories.size().string())
+    // _out.print("Poker.start. dirSize: " + _directories.size().string())
     _confirmations = _turns.isize()
     _logouts = _directories.size().isize()
     _bench = bench
@@ -398,7 +398,7 @@ actor Poker
 
     _finals.push(values)
 
-    _out.print("Poker start.login")
+    // _out.print("Poker start.login")
 
     for clientId in Range[U64](0, _clients) do
       try
@@ -423,7 +423,7 @@ actor Poker
     end
 
   be confirm() =>
-    _out.print("Poker.confirm")
+    // _out.print("Poker.confirm")
     _confirmations = _confirmations - 1
     if _confirmations == 0 then
       for d in _directories.values() do
@@ -437,14 +437,14 @@ actor Poker
 
   be finished() =>
     _logouts = _logouts - 1
-    _out.print("Poker.finished remaining logouts=" + _logouts.string())
+    // _out.print("Poker.finished remaining logouts=" + _logouts.string())
 
     if _logouts == 0 then
       var turn: USize = 0
 
       for accumulator in _runtimes.values() do
         _accumulations = _accumulations + 1
-        accumulator.print(this, _iteration, turn)
+        // accumulator.print(this, _iteration, turn)
         turn = turn + 1
       end
 
@@ -456,7 +456,7 @@ actor Poker
     end
 
   be collect(i: USize, j: USize, duration: F64, actions: ActionMap val) =>
-    _out.print("Poker.collect: accumulations=" + _accumulations.string())
+    // _out.print("Poker.collect: accumulations=" + _accumulations.string())
     for (key, value) in actions.pairs() do
       try
         _actions(key) = value + _actions(key)?
@@ -476,7 +476,7 @@ actor Poker
     end
 
     if _accumulations == 0 then
-      _out.print("Poker.collect: ==1 accumulations=" + _accumulations.string())
+      // _out.print("Poker.collect: ==1 accumulations=" + _accumulations.string())
       _iteration = _iteration + 1
 
       for (key, value) in _actions.pairs() do
