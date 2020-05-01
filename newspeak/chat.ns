@@ -229,7 +229,7 @@ class Chat usingPlatform: platform = Value (
     )
 
     public befriend = (
-      debug: ['Dir.befriend(' + dId + ')'].
+      debug: ['Dir.befriend(' + dId + ') numClients: ' + numClients ].
       clients do: [:friendTuple |
         | friend fId |
         friendTuple ~= nil ifTrue: [
@@ -410,8 +410,8 @@ Solution options:
       turnSeries at: turn put: duration.*)
 
     public confirm = (
-      debug: 'Poker.confirm'.
       confirmations:: confirmations - 1.
+      debug: ['Poker.confirm. confirmations: ' + confirmations].
       confirmations = 0 ifTrue: [
         directories do: [:d |
           d <-: disconnect: self ] ]
