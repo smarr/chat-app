@@ -281,7 +281,7 @@ actor Accumulator
   var _start: F64
   var _end: F64
   var _duration: F64
-  var _expected: USize
+  var _expected: ISize
   var _did_stop: Bool
   let _out: OutStream
 
@@ -291,7 +291,7 @@ actor Accumulator
     _start = Time.millis().f64()
     _end = 0
     _duration = 0
-    _expected = expected
+    _expected = expected.isize()
     _did_stop = false
     _out = out
 
@@ -315,7 +315,7 @@ actor Accumulator
 
   be bump(action: Action, expected: USize) =>
     _count(action)
-    _expected = ( _expected + expected ) - 1
+    _expected = ( _expected + expected.isize() ) - 1
     _out.print("Accumulator.bump: " + expected.string() +  " _expected: " + _expected.string())
 
   be stop(action: Action = Ignore) =>
@@ -340,13 +340,13 @@ actor Poker
   let _actions: ActionMap
   let _parseable: Bool
   var _clients: U64
-  var _logouts: USize
-  var _confirmations: USize
+  var _logouts: ISize
+  var _confirmations: ISize
   var _turns: U64
   var _iteration: USize
   var _directories: Array[Directory] val
   var _runtimes: Array[Accumulator]
-  var _accumulations: USize
+  var _accumulations: ISize
   var _finals: Array[Array[F64]]
   var _factory: BehaviorFactory
   var _bench: (AsyncBenchmarkCompletion | None)
@@ -386,8 +386,8 @@ actor Poker
 
   be apply(bench: AsyncBenchmarkCompletion, last: Bool) =>
     _out.print("Poker.start. dirSize: " + _directories.size().string())
-    _confirmations = _turns.usize()
-    _logouts = _directories.size()
+    _confirmations = _turns.isize()
+    _logouts = _directories.size().isize()
     _bench = bench
     _last = last
     _accumulations = 0
