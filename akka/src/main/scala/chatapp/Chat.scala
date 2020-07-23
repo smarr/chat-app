@@ -9,6 +9,7 @@ import scala.concurrent.Promise
 import scala.util.control.Breaks.{break, breakable}
 import chatapp.utils.random._
 
+import scala.concurrent.duration.Duration
 import scala.jdk.CollectionConverters._
 
 object Action extends Enumeration {
@@ -433,8 +434,9 @@ class Accumulator(poker: ActorRef[PokerMsg], expected: Long) {
 }
 
 sealed trait PokerMsg
-final case object PokFinished extends PokerMsg
-final case object PokConfirm  extends PokerMsg
+final case object PokFinished                                extends PokerMsg
+final case object PokConfirm                                 extends PokerMsg
+final case class PokApply(bench: ActorRef[_], last: Boolean) extends PokerMsg
 final case class PokCollect(
     i: Int,
     j: Int,
@@ -446,22 +448,135 @@ class Poker(
     parsable: Boolean,
     clients: Long,
     turns: Long,
-    directories: Long,
+    numDirectories: Int,
     befriend: Int,
     factory: BehaviorFactory
 ) {
-  var actions            = new mutable.HashMap[Action, Int]()
-  var logouts            = 0
-  var confirmations      = 0
-  var iterations         = 0
-  var directories        = new mutable.ArrayBuffer[ActorRef[DirMsg]]()
-  var runtimes           = new mutable.ArrayBuffer[ActorRef[AccMsg]]()
-  var accumulations      = 0
-  var bench: ActorRef[_] = _
-  var last               = false
-  var turnSeries         = new mutable.ArrayBuffer[Double]()
+  var _actions            = new mutable.HashMap[Action.Value, Int]()
+  var logouts             = 0
+  var confirmations: Long = 0
+  var iteration           = 0
+  var directories         = new mutable.ArrayBuffer[ActorRef[DirMsg]]()
+  var runtimes            = new mutable.ArrayBuffer[ActorRef[AccMsg]]()
+  var accumulations       = 0
+  var finals              = new mutable.ArrayBuffer[mutable.ArrayBuffer[Double]]()
+  var _bench: ActorRef[_] = _ //TODO runner/main actor type missing
+  var _last               = false
+  var turnSeries          = new mutable.ArrayBuffer[Double]()
 
-  def apply(): Behavior[PokerMsg] = {}
+  def apply(): Behavior[PokerMsg] = active()
+
+  private def active(): Behavior[PokerMsg] = {
+    Behaviors.receive { (context, message) =>
+      message match {
+        case PokApply(bench, last) =>
+          start(bench, last)
+        case PokConfirm =>
+          confirm()
+        case PokFinished =>
+          finished()
+        case PokCollect(i, j, duration, actions) =>
+          collect(i, j, duration, actions)
+      }
+    }
+  }
+
+  //TODO runner/main actor type missing
+  private def start(bench: ActorRef[_], last: Boolean): Behavior[PokerMsg] = {
+    Behaviors.setup { context =>
+      val rand = new SimpleRand(42)
+      directories = new mutable.ArrayBuffer[ActorRef[DirMsg]](numDirectories)
+      (0 to numDirectories).foreach { n =>
+        val dir = new Directory(rand.next(), befriend)
+        directories.addOne(context.spawn(dir(), "Directory"))
+      }
+      confirmations = turns
+      logouts = directories.length
+      _bench = bench
+      _last = last
+      accumulations = 0
+
+      var index  = 0
+      var values = new mutable.ArrayBuffer[Double](turns.toInt)
+      finals.addOne(values)
+      (0 until clients.toInt).foreach { client =>
+        index = (client % directories.length)
+        directories(index) ! DirLogin(client)
+      }
+      if (befriend > 0) {
+        for (dir <- directories) {
+          dir ! DirBefriend()
+        }
+      }
+      (0 until turns.toInt).foreach { i =>
+        var accumulator = new Accumulator(context.self, clients)
+        var accu        = context.spawn(accumulator(), "Accumulator")
+        for (dir <- directories) {
+          dir ! DirPoke(factory, accu)
+        }
+        runtimes.addOne(accu)
+      }
+      active()
+    }
+  }
+
+  private def confirm(): Behavior[PokerMsg] = {
+    Behaviors.setup { context =>
+      confirmations -= 1
+      if (confirmations == 0) {
+        for (dir <- directories) {
+          dir ! DirDisconnect(context.self)
+        }
+      }
+      active()
+    }
+  }
+
+  private def finished(): Behavior[PokerMsg] = {
+    Behaviors.setup { context =>
+      logouts -= 1
+      if (logouts == 0) {
+        var turn = 0
+        for (accumulator <- runtimes) {
+          accumulations += 1
+          accumulator ! AccPrint(context.self, iteration, turn)
+          turn += 1
+        }
+        runtimes.clear()
+      }
+      active()
+    }
+  }
+
+  private def collect(
+      i: Int,
+      j: Int,
+      duration: Double,
+      actions: mutable.HashMap[Action.Value, Int]
+  ): Behavior[PokerMsg] = {
+    Behaviors.setup { context =>
+      for (act <- actions.keys) {
+        _actions.apply(act) += 1
+      }
+      //TODO add try catch
+      finals(i)(j) = duration
+      turnSeries.addOne(duration)
+      accumulations -= 1
+      if (accumulations == 0) {
+        iteration += 1
+        if (_bench) {
+          //TODO send bench complete
+          if (_last) {
+            //TODO SampleStats
+            //TODO QOS
+            //TODO Printout
+            Behaviors.stopped
+          }
+        }
+      }
+      active()
+    }
+  }
 }
 
 class Config(args: Array[String]) {
@@ -482,15 +597,24 @@ class Config(args: Array[String]) {
     var i = 0
     while (i < args.length) {
       args(i) match {
-        case "-c"     => { clients = args(i + 1).toInt; i += 1 }
-        case "-d"     => { numDirs = args(i + 1).toInt; i += 1 }
-        case "-t"     => { turns = args(i + 1).toInt; i += 1 }
-        case "-m"     => { compute = args(i + 1).toInt; i += 1 }
-        case "-p"     => { post = args(i + 1).toInt; i += 1 }
-        case "-l"     => { leave = args(i + 1).toInt; i += 1 }
-        case "-i"     => { invite = args(i + 1).toInt; i += 1 }
-        case "-b"     => { befriend = args(i + 1).toInt; i += 1 }
-        case "-parse" => { parsable = true }
+        case "-c" =>
+          clients = args(i + 1).toInt; i += 1
+        case "-d" =>
+          numDirs = args(i + 1).toInt; i += 1
+        case "-t" =>
+          turns = args(i + 1).toInt; i += 1
+        case "-m" =>
+          compute = args(i + 1).toInt; i += 1
+        case "-p" =>
+          post = args(i + 1).toInt; i += 1
+        case "-l" =>
+          leave = args(i + 1).toInt; i += 1
+        case "-i" =>
+          invite = args(i + 1).toInt; i += 1
+        case "-b" =>
+          befriend = args(i + 1).toInt; i += 1
+        case "-parse" =>
+          parsable = true
       }
       i += 1
     }
